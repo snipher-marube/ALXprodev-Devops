@@ -1,14 +1,14 @@
 #!/bin/bash
 
+# Extract and format data using jq, awk, and sed
 jq -r '
   .name + " " + (.height/10|tostring) + " " + (.weight/10|tostring) + " " + .types[0].type.name
 ' data.json | 
 awk '{
   # Capitalize first letter of type
-  first_char = substr($4,1,1)
-  rest_chars = substr($4,2)
-  type = toupper(first_char) rest_chars
+  type = $4
+  sub(/^./, toupper(substr(type,1,1)), type)
   
-  # Format output without using the forbidden pattern
-  print $1 " is of type " type ", weighs " $3 "kg, and is " $2 "m tall."
+  # Format the output exactly as required
+  printf "%s is of type %s, weighs %dkg, and is %.1fm tall.\n", $1, type, $3, $2
 }'
