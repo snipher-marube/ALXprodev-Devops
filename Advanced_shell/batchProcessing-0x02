@@ -9,26 +9,50 @@ mkdir -p pokemon_data
 # Base API URL
 api_base="https://pokeapi.co/api/v2/pokemon"
 
-# Function to fetch and save Pokémon data
+# Maximum retry attempts
+max_retries=3
+
+# Delay between retries (seconds)
+retry_delay=2
+
+# Function to fetch and save Pokémon data with retries
 fetch_pokemon() {
     local pokemon=$1
     local output_file="pokemon_data/${pokemon}.json"
-    
+    local attempt=1
+    local success=0
+
     echo "Fetching data for ${pokemon}..."
     
-    # Make API request with curl
-    if curl -s -o "${output_file}" "${api_base}/${pokemon}" 2>/dev/null; then
-        # Verify JSON is valid
-        if jq empty "${output_file}" 2>/dev/null; then
-            echo "Saved data to ${output_file} ✅"
-            return 0
+    while [ $attempt -le $max_retries ]; do
+        # Make API request with curl
+        if curl -s -o "${output_file}" "${api_base}/${pokemon}" 2>/dev/null; then
+            # Verify JSON is valid
+            if jq empty "${output_file}" 2>/dev/null; then
+                success=1
+                break
+            else
+                echo "Attempt ${attempt}/${max_retries}: Invalid JSON received for ${pokemon}" >&2
+                rm -f "${output_file}"
+            fi
         else
-            echo "Error: Invalid JSON received for ${pokemon}" >&2
-            rm -f "${output_file}"
-            return 1
+            echo "Attempt ${attempt}/${max_retries}: Failed to fetch data for ${pokemon}" >&2
         fi
+        
+        # Increment attempt counter
+        attempt=$((attempt + 1))
+        
+        # Delay before retry if not last attempt
+        if [ $attempt -le $max_retries ]; then
+            sleep $retry_delay
+        fi
+    done
+
+    if [ $success -eq 1 ]; then
+        echo "Saved data to ${output_file} ✅"
+        return 0
     else
-        echo "Error: Failed to fetch data for ${pokemon}" >&2
+        echo "Error: Max retries reached for ${pokemon}. Skipping..." >&2
         return 1
     fi
 }
@@ -36,7 +60,7 @@ fetch_pokemon() {
 # Process each Pokémon with delay between requests
 for pokemon in "${pokemon_list[@]}"; do
     fetch_pokemon "${pokemon}"
-    sleep 1  # Rate limiting delay
+    sleep 1  # Rate limiting delay between different Pokémon
 done
 
 echo "Pokémon data fetch complete!"
