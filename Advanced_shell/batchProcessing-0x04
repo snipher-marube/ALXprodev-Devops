@@ -43,22 +43,48 @@ fetch_pokemon() {
     return 1
 }
 
-# Main processing loop
-echo "Starting parallel fetch for ${#pokemon_list[@]} Pokémon (max ${max_concurrent} concurrent)"
+# Initialize process tracking
+declare -A pid_map
+current_running=0
+completed=0
+total=${#pokemon_list[@]}
 
+echo "Starting parallel fetch for ${total} Pokémon (max ${max_concurrent} concurrent)"
+
+# Main processing loop
 for pokemon in "${pokemon_list[@]}"; do
-    # Wait if we've reached max concurrent jobs
-    while [ $(jobs -r | wc -l) -ge $max_concurrent ]; do
-        sleep 0.5
+    # Wait for slot if we've reached max concurrent
+    while [ $current_running -ge $max_concurrent ]; do
+        # Check for completed processes using jobs and kill
+        for pid in "${!pid_map[@]}"; do
+            if ! kill -0 "$pid" 2>/dev/null; then
+                unset "pid_map[$pid]"
+                current_running=$((current_running - 1))
+                completed=$((completed + 1))
+            fi
+        done
+        sleep 0.1
     done
 
-    # Start new background job
+    # Start new process
     fetch_pokemon "$pokemon" &
-    echo "[${pokemon}] Process started (PID $!)"
+    pid=$!
+    pid_map[$pid]=$pokemon
+    current_running=$((current_running + 1))
+    echo "[${pokemon}] Process started (PID $pid)"
 done
 
-# Wait for all background jobs to complete
-echo "Waiting for all processes to complete..."
-wait
+# Wait for remaining processes using kill checks
+echo "Waiting for remaining processes to complete..."
+while [ $completed -lt $total ]; do
+    for pid in "${!pid_map[@]}"; do
+        if ! kill -0 "$pid" 2>/dev/null; then
+            unset "pid_map[$pid]"
+            current_running=$((current_running - 1))
+            completed=$((completed + 1))
+        fi
+    done
+    sleep 0.5
+done
 
 echo "All Pokémon data fetched successfully!"
