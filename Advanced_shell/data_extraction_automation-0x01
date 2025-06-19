@@ -1,10 +1,14 @@
 #!/bin/bash
 
-# Extract data using jq
-name=$(jq -r '.name' data.json)
-height=$(jq -r '.height/10' data.json)
-weight=$(jq -r '.weight/10' data.json)
-type=$(jq -r '.types[0].type.name' data.json | sed 's/\b\(.\)/\u\1/g')
-
-# Format the output exactly as required
-echo "$name is of type $type, weighs ${weight}kg, and is ${height}m tall."
+# Extract and format data using jq, awk, and sed
+jq -r '
+  .name + " " + (.height/10|tostring) + " " + (.weight/10|tostring) + " " + .types[0].type.name
+' data.json | 
+awk '{
+  # Capitalize first letter of type
+  type = $4
+  sub(/^./, toupper(substr(type,1,1)), type)
+  
+  # Format the output exactly as required
+  printf "%s is of type %s, weighs %dkg, and is %.1fm tall.\n", $1, type, $3, $2
+}'
