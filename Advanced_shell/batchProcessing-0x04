@@ -1,0 +1,89 @@
+#!/bin/bash
+
+# List of Pokémon to fetch
+pokemon_list=("bulbasaur" "ivysaur" "venusaur" "charmander" "charmeleon")
+
+# Create directory for storing data
+mkdir -p pokemon_data
+
+# Base API URL
+api_base="https://pokeapi.co/api/v2/pokemon"
+
+# Maximum concurrent processes
+max_concurrent=3
+
+# Function to fetch and save Pokémon data
+fetch_pokemon() {
+    local pokemon=$1
+    local output_file="pokemon_data/${pokemon}.json"
+    local attempt=1
+    local max_retries=3
+    local retry_delay=1
+
+    while [ $attempt -le $max_retries ]; do
+        echo "[${pokemon}] Attempt ${attempt}/${max_retries}"
+        
+        if curl -s -o "${output_file}" "${api_base}/${pokemon}" 2>/dev/null; then
+            if jq empty "${output_file}" 2>/dev/null; then
+                echo "[${pokemon}] Data saved successfully ✅"
+                return 0
+            else
+                echo "[${pokemon}] Invalid JSON received" >&2
+                rm -f "${output_file}"
+            fi
+        else
+            echo "[${pokemon}] Request failed" >&2
+        fi
+
+        attempt=$((attempt + 1))
+        [ $attempt -le $max_retries ] && sleep $retry_delay
+    done
+
+    echo "[${pokemon}] Max retries reached. Skipping..." >&2
+    return 1
+}
+
+# Initialize variables
+declare -A pids
+current_running=0
+completed=0
+total=${#pokemon_list[@]}
+
+echo "Starting parallel fetch for ${total} Pokémon (max ${max_concurrent} concurrent)"
+
+# Main processing loop
+for pokemon in "${pokemon_list[@]}"; do
+    # Wait for slot if we've reached max concurrent
+    while [ $current_running -ge $max_concurrent ]; do
+        # Check for completed processes
+        for pid in "${!pids[@]}"; do
+            if ! kill -0 "$pid" 2>/dev/null; then
+                unset "pids[$pid]"
+                current_running=$((current_running - 1))
+                completed=$((completed + 1))
+            fi
+        done
+        sleep 0.1
+    done
+
+    # Start new process
+    fetch_pokemon "$pokemon" &
+    pids[$!]=$pokemon
+    current_running=$((current_running + 1))
+    echo "[${pokemon}] Process started (PID $!)"
+done
+
+# Wait for remaining processes
+echo "Waiting for remaining processes to complete..."
+while [ $completed -lt $total ]; do
+    for pid in "${!pids[@]}"; do
+        if ! kill -0 "$pid" 2>/dev/null; then
+            unset "pids[$pid]"
+            current_running=$((current_running - 1))
+            completed=$((completed + 1))
+        fi
+    done
+    sleep 0.5
+done
+
+echo "All Pokémon data fetched successfully!"
