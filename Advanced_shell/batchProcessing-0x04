@@ -43,48 +43,22 @@ fetch_pokemon() {
     return 1
 }
 
-# Initialize process tracking
-declare -a pid_list
-current_running=0
-completed=0
-total=${#pokemon_list[@]}
-
-echo "Starting parallel fetch for ${total} Pokémon (max ${max_concurrent} concurrent)"
-
 # Main processing loop
+echo "Starting parallel fetch for ${#pokemon_list[@]} Pokémon (max ${max_concurrent} concurrent)"
+
 for pokemon in "${pokemon_list[@]}"; do
-    # Wait for slot if we've reached max concurrent
-    while [ $current_running -ge $max_concurrent ]; do
-        # Check for completed processes
-        for i in "${!pid_list[@]}"; do
-            if [ -n "${pid_list[i]}" ] && ! kill -0 "${pid_list[i]}" 2>/dev/null; then
-                unset "pid_list[i]"
-                current_running=$((current_running - 1))
-                completed=$((completed + 1))
-            fi
-        done
-        sleep 0.1
+    # Wait if we've reached max concurrent jobs
+    while [ $(jobs -r | wc -l) -ge $max_concurrent ]; do
+        sleep 0.5
     done
 
-    # Start new process
+    # Start new background job
     fetch_pokemon "$pokemon" &
-    pid=$!
-    pid_list+=("$pid")
-    current_running=$((current_running + 1))
-    echo "[${pokemon}] Process started (PID $pid)"
+    echo "[${pokemon}] Process started (PID $!)"
 done
 
-# Wait for remaining processes
-echo "Waiting for remaining processes to complete..."
-while [ $completed -lt $total ]; do
-    for i in "${!pid_list[@]}"; do
-        if [ -n "${pid_list[i]}" ] && ! kill -0 "${pid_list[i]}" 2>/dev/null; then
-            unset "pid_list[i]"
-            current_running=$((current_running - 1))
-            completed=$((completed + 1))
-        fi
-    done
-    sleep 0.5
-done
+# Wait for all background jobs to complete
+echo "Waiting for all processes to complete..."
+wait
 
 echo "All Pokémon data fetched successfully!"
