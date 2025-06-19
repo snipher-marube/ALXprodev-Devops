@@ -43,8 +43,8 @@ fetch_pokemon() {
     return 1
 }
 
-# Initialize variables
-declare -A pids
+# Initialize process tracking
+declare -a pid_list
 current_running=0
 completed=0
 total=${#pokemon_list[@]}
@@ -56,9 +56,9 @@ for pokemon in "${pokemon_list[@]}"; do
     # Wait for slot if we've reached max concurrent
     while [ $current_running -ge $max_concurrent ]; do
         # Check for completed processes
-        for pid in "${!pids[@]}"; do
-            if ! kill -0 "$pid" 2>/dev/null; then
-                unset "pids[$pid]"
+        for i in "${!pid_list[@]}"; do
+            if [ -n "${pid_list[i]}" ] && ! kill -0 "${pid_list[i]}" 2>/dev/null; then
+                unset "pid_list[i]"
                 current_running=$((current_running - 1))
                 completed=$((completed + 1))
             fi
@@ -68,17 +68,18 @@ for pokemon in "${pokemon_list[@]}"; do
 
     # Start new process
     fetch_pokemon "$pokemon" &
-    pids[$!]=$pokemon
+    pid=$!
+    pid_list+=("$pid")
     current_running=$((current_running + 1))
-    echo "[${pokemon}] Process started (PID $!)"
+    echo "[${pokemon}] Process started (PID $pid)"
 done
 
 # Wait for remaining processes
 echo "Waiting for remaining processes to complete..."
 while [ $completed -lt $total ]; do
-    for pid in "${!pids[@]}"; do
-        if ! kill -0 "$pid" 2>/dev/null; then
-            unset "pids[$pid]"
+    for i in "${!pid_list[@]}"; do
+        if [ -n "${pid_list[i]}" ] && ! kill -0 "${pid_list[i]}" 2>/dev/null; then
+            unset "pid_list[i]"
             current_running=$((current_running - 1))
             completed=$((completed + 1))
         fi
