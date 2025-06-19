@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# Extract and format Pikachu's data from data.json
+jq -r '
+  "\(.name) \(.height/10) \(.weight/10) \(.types[0].type.name)" 
+' data.json | 
+awk '{
+  name = $1
+  height = $2
+  weight = $3
+  type = $4
+  printf "%s is of type %s, weighs %dkg, and is %.1fm tall.\n", 
+         name, type, weight, height
+}' |
+sed 's/\b\(.\)/\u\1/g'  # Capitalize first letter of type
